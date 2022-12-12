@@ -117,6 +117,29 @@ def main(args):
 
     start_epoch = 0
     global_step = 0
+    if cfg.resume_backbone:
+        dict_checkpoint = torch.load(os.path.join(cfg.output, f"checkpoint_{rank}.pt"))
+        backbone.module.load_state_dict(dict_checkpoint)
+        del dict_checkpoint
+
+        with torch.no_grad():
+            module_partial_fc.weight_activated.set_(torch.zeros_like(module_partial_fc.weight_activated))
+            import random
+            if isinstance(train_loader, DataLoader):
+                train_loader.sampler.set_epoch(9999)
+            b = 0
+            PREPARE_RATE = 5
+            print(f"use {PREPARE_RATE * cfg.num_classes // cfg.batch_size} steps")
+            for _, (img, local_labels) in enumerate(train_loader):
+                if b >= PREPARE_RATE * cfg.num_classes / cfg.batch_size:
+                    break
+                local_embeddings = backbone(img)
+                local_labels.squeeze_()
+                local_labels = local_labels.long()
+                for i, label in enumerate(local_labels):
+                    module_partial_fc.weight_activated[label] += local_embeddings[i]
+                b += 1
+
     if cfg.resume:
         dict_checkpoint = torch.load(os.path.join(cfg.output, f"checkpoint_gpu_{rank}.pt"))
         start_epoch = dict_checkpoint["epoch"]

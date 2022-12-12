@@ -13,6 +13,8 @@ config.resume = False
 config.save_all_states = False
 config.output = "ms1mv3_arcface_r50"
 
+config.resume_backbone = False
+
 config.embedding_size = 512
 
 # Partial FC
