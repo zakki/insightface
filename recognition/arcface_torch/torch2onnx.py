@@ -48,6 +48,7 @@ if __name__ == '__main__':
     assert args.network is not None
     print(args)
     backbone_onnx = get_model(args.network, dropout=0.0, fp16=False, num_features=512)
+    backbone_onnx.use_aug = False
     if args.output is None:
         args.output = os.path.join(os.path.dirname(args.input), "model.onnx")
     convert_onnx(backbone_onnx, input_file, args.output, simplify=args.simplify)

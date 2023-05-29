@@ -241,6 +241,10 @@ def main(args):
         torch.save(backbone.module.state_dict(), path_module)
 
         from torch2onnx import convert_onnx
+        try:
+            backbone.use_aug = False
+        except:
+            pass
         convert_onnx(backbone.module.cpu().eval(), path_module, os.path.join(cfg.output, "model.onnx"))
         
         if wandb_logger and cfg.save_artifacts:

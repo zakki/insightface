@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.utils.checkpoint import checkpoint
+from torchvision import transforms
 
 __all__ = ['iresnet18', 'iresnet34', 'iresnet50', 'iresnet100', 'iresnet200']
 using_ckpt = False
@@ -24,6 +25,39 @@ def conv1x1(in_planes, out_planes, stride=1):
                      kernel_size=1,
                      stride=stride,
                      bias=False)
+
+
+def gauss_noise_tensor(img):
+    assert isinstance(img, torch.Tensor)
+    dtype = img.dtype
+    if not img.is_floating_point():
+        img = img.to(torch.float32)
+
+    sigma = 0.1
+
+    out = img + sigma * torch.randn_like(img)
+
+    if out.dtype != dtype:
+        out = out.to(dtype)
+
+    return out
+
+
+transform_fm1 = transforms.Compose([
+    transforms.RandomResizedCrop(112),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(30),
+    transforms.GaussianBlur(3),
+    gauss_noise_tensor
+])
+
+transform_fm2 = transforms.Compose([
+    transforms.RandomResizedCrop(56),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(30),
+    transforms.GaussianBlur(3),
+    gauss_noise_tensor
+])
 
 
 class IBasicBlock(nn.Module):
@@ -55,7 +89,7 @@ class IBasicBlock(nn.Module):
         if self.downsample is not None:
             identity = self.downsample(x)
         out += identity
-        return out        
+        return out
 
     def forward(self, x):
         if self.training and using_ckpt:
@@ -74,6 +108,7 @@ class IResNet(nn.Module):
         self.fp16 = fp16
         self.inplanes = 64
         self.dilation = 1
+        self.use_aug = True
         if replace_stride_with_dilation is None:
             replace_stride_with_dilation = [False, False, False]
         if len(replace_stride_with_dilation) != 3:
@@ -145,12 +180,20 @@ class IResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x, use_aug=True):
         with torch.cuda.amp.autocast(self.fp16):
             x = self.conv1(x)
             x = self.bn1(x)
             x = self.prelu(x)
+            if self.use_aug and use_aug:
+                # print("L1in", x.shape)
+                mask = torch.rand(64).argsort() < 64 * 3 // 10
+                x[:,mask] = transform_fm1(x[:,mask])
             x = self.layer1(x)
+            if self.use_aug and use_aug:
+                # print("L2in", x.shape)
+                mask = torch.rand(64).argsort() < 64 * 2 // 10
+                x[:,mask] = transform_fm2(x[:,mask])
             x = self.layer2(x)
             x = self.layer3(x)
             x = self.layer4(x)
